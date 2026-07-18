@@ -6,72 +6,38 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const path = require('path');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// ============ DATABASE CONNECTION ============
-console.log('🔐 CONNECTING TO MONGODB...');
+// ============ TRUST PROXY ============
+app.set('trust proxy', 1);
 
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
+// ============ DATABASE ============
+mongoose.connect(process.env.MONGODB_URI)
 .then(() => {
-    console.log('✅ MONGODB CONNECTED SUCCESSFULLY!');
+    console.log('✅ MONGODB CONNECTED');
     createDefaultAdmin();
 })
-.catch(err => {
-    console.log('❌ MONGODB CONNECTION ERROR:', err.message);
-});
+.catch(err => console.log('❌ MONGODB ERROR:', err.message));
 
 // ============ USER SCHEMA ============
 const UserSchema = new mongoose.Schema({
-    deviceId: { 
-        type: String, 
-        unique: true, 
-        required: true,
-        trim: true,
-        minlength: 3
-    },
-    passwordHash: { 
-        type: String, 
-        required: true 
-    },
-    role: { 
-        type: String, 
-        default: 'user',
-        enum: ['user', 'admin']
-    },
-    isActive: { 
-        type: Boolean, 
-        default: true 
-    },
-    lastLogin: { 
-        type: Date 
-    },
-    loginAttempts: { 
-        type: Number, 
-        default: 0 
-    },
-    lockUntil: { 
-        type: Date 
-    },
-    sessionId: { 
-        type: String 
-    },
-    createdAt: { 
-        type: Date, 
-        default: Date.now 
-    }
-}, {
-    timestamps: true
-});
+    deviceId: { type: String, unique: true, required: true, trim: true },
+    passwordHash: { type: String, required: true },
+    role: { type: String, default: 'user', enum: ['user', 'admin'] },
+    isActive: { type: Boolean, default: true },
+    lastLogin: { type: Date },
+    loginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date },
+    createdAt: { type: Date, default: Date.now }
+}, { timestamps: true });
 
 const User = mongoose.model('User', UserSchema);
 
-// ============ CREATE DEFAULT ADMIN USER ============
+// ============ CREATE ADMIN ============
 async function createDefaultAdmin() {
     try {
         const adminExists = await User.findOne({ role: 'admin' });
@@ -85,16 +51,16 @@ async function createDefaultAdmin() {
                 isActive: true
             });
             await admin.save();
-            console.log('✅ DEFAULT ADMIN USER CREATED!');
-            console.log('📛 ADMIN DEVICE ID: ADMIN-DEVICE-001');
-            console.log('🔑 ADMIN PASSWORD: ' + adminPassword);
+            console.log('✅ ADMIN USER CREATED!');
+            console.log('📛 ADMIN-DEVICE-001');
+            console.log('🔑 ' + adminPassword);
         }
     } catch (error) {
-        console.log('⚠️ ADMIN USER CREATION ERROR:', error.message);
+        console.log('⚠️ ADMIN ERROR:', error.message);
     }
 }
 
-// ============ SESSION STORE ============
+// ============ SESSION ============
 const sessionStore = MongoStore.create({
     mongoUrl: process.env.MONGODB_URI,
     collectionName: 'sessions',
@@ -103,8 +69,6 @@ const sessionStore = MongoStore.create({
 });
 
 // ============ MIDDLEWARE ============
-
-// HELMET - SECURITY HEADERS
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -114,35 +78,17 @@ app.use(helmet({
             imgSrc: ["'self'", "data:"],
             connectSrc: ["'self'"],
             frameSrc: ["'none'"],
-            objectSrc: ["'none'"],
-            baseUri: ["'self'"],
-            formAction: ["'self'"]
+            objectSrc: ["'none'"]
         }
-    },
-    hsts: { 
-        maxAge: 31536000, 
-        includeSubDomains: true, 
-        preload: true 
-    },
-    noSniff: true,
-    referrerPolicy: { 
-        policy: 'same-origin' 
-    },
-    frameguard: { 
-        action: 'deny' 
     }
 }));
 
-// BODY PARSER
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// STATIC FILES
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use('/static', express.static(path.join(__dirname, '../public')));
 
-// ============ SESSION (HTTP-ONLY COOKIES) ============
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback_secret_change_this',
+    secret: process.env.SESSION_SECRET || 'fallback_secret',
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
@@ -156,42 +102,34 @@ app.use(session({
     name: '__Secure-zx-session'
 }));
 
-// ============ CSRF DISABLED - USING SIMPLE TOKEN ============
-// Generate simple token for forms
+// ============ CSRF - SIMPLIFIED ============
 app.use((req, res, next) => {
     if (!req.session.token) {
-        req.session.token = require('crypto').randomBytes(32).toString('hex');
+        req.session.token = crypto.randomBytes(32).toString('hex');
     }
     res.locals.csrfToken = req.session.token;
     req.csrfToken = () => req.session.token;
     next();
 });
 
-// Simple CSRF check for POST requests
 app.use((req, res, next) => {
     if (req.method === 'POST') {
         const token = req.body._csrf || req.headers['x-csrf-token'];
         if (!token || token !== req.session.token) {
-            // If token invalid, just continue but log it
-            console.log('⚠️ CSRF TOKEN MISMATCH - BUT CONTINUING');
-            // For production, you might want to block, but for now let's proceed
+            console.log('⚠️ CSRF MISMATCH - CONTINUING');
         }
     }
     next();
 });
 
-// ============ RATE LIMITING ============
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: 'Too many requests. Please try again later.'
-});
-app.use('/api', limiter);
-
+// ============ RATE LIMITER ============
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
-    message: 'Too many login attempts. Please try again later.'
+    message: 'Too many login attempts. Try again later.',
+    trustProxy: true,
+    standardHeaders: true,
+    legacyHeaders: false
 });
 
 // ============ VIEW ENGINE ============
@@ -210,25 +148,19 @@ function requireAdmin(req, res, next) {
     if (!req.session || !req.session.userId) {
         return res.redirect('/login');
     }
-    
     User.findById(req.session.userId)
         .then(user => {
             if (!user || user.role !== 'admin') {
-                return res.status(403).send('⛔ ACCESS DENIED. ADMIN ONLY.');
+                return res.status(403).send('ADMIN ONLY');
             }
             next();
         })
-        .catch(() => res.status(500).send('SERVER ERROR'));
+        .catch(() => res.status(500).send('ERROR'));
 }
 
 // ============ ROUTES ============
+app.get('/', (req, res) => res.redirect('/login'));
 
-// ROOT (/) REDIRECT TO LOGIN
-app.get('/', (req, res) => {
-    res.redirect('/login');
-});
-
-// LOGIN PAGE
 app.get('/login', (req, res) => {
     if (req.session && req.session.userId) {
         return res.redirect('/dashboard');
@@ -239,14 +171,13 @@ app.get('/login', (req, res) => {
     });
 });
 
-// LOGIN POST
 app.post('/login', authLimiter, async (req, res) => {
     const { deviceId, password } = req.body;
     
     if (!deviceId || !password) {
         return res.render('login', { 
             csrfToken: req.csrfToken(), 
-            error: 'ALL FIELDS ARE REQUIRED' 
+            error: 'ALL FIELDS REQUIRED' 
         });
     }
     
@@ -258,52 +189,78 @@ app.post('/login', authLimiter, async (req, res) => {
             if (!keyExists) {
                 return res.render('login', { 
                     csrfToken: req.csrfToken(), 
-                    error: 'INVALID CREDENTIALS. PLEASE CHECK YOUR ACCESS KEY.' 
+                    error: 'INVALID CREDENTIALS' 
                 });
             }
             
             const hashedPassword = await bcrypt.hash(password, 12);
-            try {
-                user = new User({
-                    deviceId: deviceId,
-                    passwordHash: hashedPassword,
-                    role: 'user'
-                });
-                await user.save();
-                console.log(`✅ NEW USER REGISTERED: ${deviceId}`);
-            } catch (saveError) {
-                if (saveError.code === 11000) {
-                    console.log(`⚠️ USER ALREADY EXISTS: ${deviceId}`);
-                    user = await User.findOne({ deviceId });
-                    if (!user) {
-                        const newDeviceId = `ZX-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-                        console.log(`🔄 GENERATED NEW DEVICE ID: ${newDeviceId}`);
-                        user = new User({
-                            deviceId: newDeviceId,
-                            passwordHash: hashedPassword,
-                            role: 'user'
-                        });
-                        await user.save();
-                        req.session.deviceId = newDeviceId;
-                    }
-                } else {
-                    throw saveError;
-                }
-            }
+            user = new User({
+                deviceId: deviceId,
+                passwordHash: hashedPassword,
+                role: 'user'
+            });
+            await user.save();
+            console.log(`✅ NEW USER: ${deviceId}`);
         }
         
-        // ... REST OF LOGIN CODE ...
+        if (!user.isActive) {
+            return res.render('login', { 
+                csrfToken: req.csrfToken(), 
+                error: 'ACCOUNT DISABLED' 
+            });
+        }
+        
+        if (user.lockUntil && user.lockUntil > Date.now()) {
+            const remaining = Math.ceil((user.lockUntil - Date.now()) / 60000);
+            return res.render('login', { 
+                csrfToken: req.csrfToken(), 
+                error: `ACCOUNT LOCKED. TRY IN ${remaining} MINUTES` 
+            });
+        }
+        
+        const isValid = await bcrypt.compare(password, user.passwordHash);
+        if (!isValid) {
+            user.loginAttempts += 1;
+            if (user.loginAttempts >= 5) {
+                user.lockUntil = Date.now() + 15 * 60 * 1000;
+                await user.save();
+                return res.render('login', { 
+                    csrfToken: req.csrfToken(), 
+                    error: 'TOO MANY ATTEMPTS. LOCKED 15 MINUTES' 
+                });
+            }
+            await user.save();
+            return res.render('login', { 
+                csrfToken: req.csrfToken(), 
+                error: 'INVALID CREDENTIALS' 
+            });
+        }
+        
+        user.loginAttempts = 0;
+        user.lockUntil = null;
+        user.lastLogin = new Date();
+        await user.save();
+        
+        req.session.userId = user._id;
+        req.session.role = user.role;
+        req.session.deviceId = user.deviceId;
+        
+        console.log(`✅ USER LOGGED IN: ${deviceId} (${user.role})`);
+        
+        if (user.role === 'admin') {
+            return res.redirect('/admin');
+        }
+        res.redirect('/dashboard');
         
     } catch (error) {
         console.error('LOGIN ERROR:', error);
         res.render('login', { 
             csrfToken: req.csrfToken(), 
-            error: 'SERVER ERROR. PLEASE TRY AGAIN.' 
+            error: 'SERVER ERROR. TRY AGAIN.' 
         });
     }
 });
 
-// DASHBOARD
 app.get('/dashboard', requireAuth, async (req, res) => {
     try {
         const user = await User.findById(req.session.userId);
@@ -316,13 +273,11 @@ app.get('/dashboard', requireAuth, async (req, res) => {
             role: user.role,
             csrfToken: req.csrfToken()
         });
-    } catch (error) {
-        console.error('DASHBOARD ERROR:', error);
+    } catch {
         res.redirect('/login');
     }
 });
 
-// ADMIN PANEL
 app.get('/admin', requireAdmin, async (req, res) => {
     try {
         const users = await User.find({}).select('-passwordHash').sort({ createdAt: -1 });
@@ -330,8 +285,7 @@ app.get('/admin', requireAdmin, async (req, res) => {
             users: users,
             csrfToken: req.csrfToken()
         });
-    } catch (error) {
-        console.error('ADMIN ERROR:', error);
+    } catch {
         res.render('admin', { 
             users: [], 
             csrfToken: req.csrfToken()
@@ -339,82 +293,40 @@ app.get('/admin', requireAdmin, async (req, res) => {
     }
 });
 
-// ADMIN: TOGGLE USER
 app.post('/admin/user/:id/toggle', requireAdmin, async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
         if (user) {
             user.isActive = !user.isActive;
             await user.save();
-            console.log(`✅ USER ${user.deviceId} ${user.isActive ? 'ENABLED' : 'DISABLED'}`);
         }
         res.redirect('/admin');
-    } catch (error) {
-        console.error('TOGGLE ERROR:', error);
+    } catch {
         res.redirect('/admin');
     }
 });
 
-// ADMIN: DELETE USER
 app.post('/admin/user/:id/delete', requireAdmin, async (req, res) => {
     try {
-        const user = await User.findByIdAndDelete(req.params.id);
-        if (user) {
-            console.log(`✅ USER DELETED: ${user.deviceId}`);
-        }
+        await User.findByIdAndDelete(req.params.id);
         res.redirect('/admin');
-    } catch (error) {
-        console.error('DELETE ERROR:', error);
+    } catch {
         res.redirect('/admin');
     }
 });
 
-// LOGOUT
 app.get('/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            console.error('LOGOUT ERROR:', err);
-        }
+    req.session.destroy(() => {
         res.redirect('/login');
     });
 });
 
-// HEALTH CHECK
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime()
-    });
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// ============ ERROR HANDLING ============
-app.use((err, req, res, next) => {
-    console.error('SERVER ERROR:', err);
-    res.status(500).send('SOMETHING WENT WRONG. PLEASE TRY AGAIN LATER.');
-});
-
-// ============ 404 HANDLER ============
-app.use((req, res) => {
-    res.status(404).send('PAGE NOT FOUND');
-});
-
-// ============ START SERVER ============
+// ============ START ============
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🛡️ UNBREAKABLE SERVER RUNNING ON PORT ${PORT}`);
+    console.log(`🛡️ UNBREAKABLE SERVER ON PORT ${PORT}`);
     console.log(`🔐 https://unbreakable-app.onrender.com`);
-    console.log(`📱 HEALTH: https://unbreakable-app.onrender.com/health`);
-});
-
-// ============ GRACEFUL SHUTDOWN ============
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM RECEIVED. SHUTTING DOWN GRACEFULLY...');
-    await mongoose.disconnect();
-    process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-    console.log('SIGINT RECEIVED. SHUTTING DOWN GRACEFULLY...');
-    await mongoose.disconnect();
-    process.exit(0);
 });
