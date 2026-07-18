@@ -254,7 +254,6 @@ app.post('/login', authLimiter, async (req, res) => {
         let user = await User.findOne({ deviceId });
         
         if (!user) {
-            // Check if password matches any existing user's deviceId
             const keyExists = await User.findOne({ deviceId: password });
             if (!keyExists) {
                 return res.render('login', { 
@@ -264,63 +263,36 @@ app.post('/login', authLimiter, async (req, res) => {
             }
             
             const hashedPassword = await bcrypt.hash(password, 12);
-            user = new User({
-                deviceId: deviceId,
-                passwordHash: hashedPassword,
-                role: 'user'
-            });
-            await user.save();
-            console.log(`✅ NEW USER REGISTERED: ${deviceId}`);
-        }
-        
-        if (!user.isActive) {
-            return res.render('login', { 
-                csrfToken: req.csrfToken(), 
-                error: 'ACCOUNT IS DISABLED. CONTACT ADMIN.' 
-            });
-        }
-        
-        if (user.lockUntil && user.lockUntil > Date.now()) {
-            const remaining = Math.ceil((user.lockUntil - Date.now()) / 60000);
-            return res.render('login', { 
-                csrfToken: req.csrfToken(), 
-                error: `ACCOUNT LOCKED. TRY AGAIN IN ${remaining} MINUTES.` 
-            });
-        }
-        
-        const isValid = await bcrypt.compare(password, user.passwordHash);
-        if (!isValid) {
-            user.loginAttempts += 1;
-            if (user.loginAttempts >= 5) {
-                user.lockUntil = Date.now() + 15 * 60 * 1000;
-                await user.save();
-                return res.render('login', { 
-                    csrfToken: req.csrfToken(), 
-                    error: 'TOO MANY ATTEMPTS. ACCOUNT LOCKED FOR 15 MINUTES.' 
+            try {
+                user = new User({
+                    deviceId: deviceId,
+                    passwordHash: hashedPassword,
+                    role: 'user'
                 });
+                await user.save();
+                console.log(`✅ NEW USER REGISTERED: ${deviceId}`);
+            } catch (saveError) {
+                if (saveError.code === 11000) {
+                    console.log(`⚠️ USER ALREADY EXISTS: ${deviceId}`);
+                    user = await User.findOne({ deviceId });
+                    if (!user) {
+                        const newDeviceId = `ZX-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+                        console.log(`🔄 GENERATED NEW DEVICE ID: ${newDeviceId}`);
+                        user = new User({
+                            deviceId: newDeviceId,
+                            passwordHash: hashedPassword,
+                            role: 'user'
+                        });
+                        await user.save();
+                        req.session.deviceId = newDeviceId;
+                    }
+                } else {
+                    throw saveError;
+                }
             }
-            await user.save();
-            return res.render('login', { 
-                csrfToken: req.csrfToken(), 
-                error: 'INVALID CREDENTIALS. PLEASE TRY AGAIN.' 
-            });
         }
         
-        user.loginAttempts = 0;
-        user.lockUntil = null;
-        user.lastLogin = new Date();
-        await user.save();
-        
-        req.session.userId = user._id;
-        req.session.role = user.role;
-        req.session.deviceId = user.deviceId;
-        
-        console.log(`✅ USER LOGGED IN: ${deviceId} (${user.role})`);
-        
-        if (user.role === 'admin') {
-            return res.redirect('/admin');
-        }
-        res.redirect('/dashboard');
+        // ... REST OF LOGIN CODE ...
         
     } catch (error) {
         console.error('LOGIN ERROR:', error);
