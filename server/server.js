@@ -166,9 +166,11 @@ app.use(session({
 }));
 
 // ============ CSRF PROTECTION ============
-const csrfProtection = csrf({ cookie: true });
+const csrfProtection = csrf({ 
+    cookie: false,
+    ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+});
 app.use(csrfProtection);
-
 // ============ RATE LIMITING ============
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
