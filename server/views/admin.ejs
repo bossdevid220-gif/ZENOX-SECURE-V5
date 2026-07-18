@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel</title>
+    <title>ADMIN PANEL</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -68,16 +68,16 @@
 <body>
 <div class="container">
     <div class="header">
-        <h1>⚙ Admin Panel</h1>
-        <a href="/logout" class="logout-btn">🚪 Logout</a>
+        <h1>⚙ ADMIN PANEL</h1>
+        <a href="/logout" class="logout-btn">🚪 LOGOUT</a>
     </div>
     
     <div class="card">
-        <h2>👥 Registered Users</h2>
+        <h2>👥 REGISTERED USERS</h2>
         <% if (users && users.length > 0) { %>
             <table>
                 <thead>
-                    <tr><th>Device ID</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>
+                    <tr><th>DEVICE ID</th><th>ROLE</th><th>STATUS</th><th>LAST LOGIN</th><th>ACTIONS</th></tr>
                 </thead>
                 <tbody>
                     <% users.forEach(user => { %>
@@ -86,17 +86,17 @@
                             <td><%= user.role %></td>
                             <td>
                                 <span class="status-dot <%= user.isActive ? 'active' : 'inactive' %>"></span>
-                                <%= user.isActive ? 'Active' : 'Disabled' %>
+                                <%= user.isActive ? 'ACTIVE' : 'DISABLED' %>
                             </td>
-                            <td style="font-size:12px;color:#7c6ba0;"><%= user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never' %></td>
+                            <td style="font-size:12px;color:#7c6ba0;"><%= user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'NEVER' %></td>
                             <td>
                                 <form action="/admin/user/<%= user._id %>/toggle" method="POST" style="display:inline;">
                                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                    <button type="submit" class="btn btn-warning"><%= user.isActive ? 'Disable' : 'Enable' %></button>
+                                    <button type="submit" class="btn btn-warning"><%= user.isActive ? 'DISABLE' : 'ENABLE' %></button>
                                 </form>
                                 <form action="/admin/user/<%= user._id %>/delete" method="POST" style="display:inline;">
                                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this user?')">Delete</button>
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('DELETE THIS USER?')">DELETE</button>
                                 </form>
                             </td>
                         </tr>
@@ -104,11 +104,11 @@
                 </tbody>
             </table>
         <% } else { %>
-            <p class="empty">No users registered yet.</p>
+            <p class="empty">NO USERS REGISTERED YET.</p>
         <% } %>
     </div>
     
-    <div class="footer">UNBREAKABLE v1.0</div>
+    <div class="footer">UNBREAKABLE V1.0</div>
 </div>
 </body>
 </html>
