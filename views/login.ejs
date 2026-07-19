@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZENOX - SECURE LOGIN</title>
+    <title>ZENOX - SECURE PORTAL</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family: system-ui, sans-serif; }
         body { background: #040209; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .card { background: #0c0919; border-radius: 20px; padding: 40px; border: 2px solid #FF0055; width: 100%; max-width: 420px; box-shadow: 0 0 30px rgba(0, 110, 255, 0.3); text-align: center; }
         h1 { color: #FF0055; font-size: 28px; font-weight: 900; letter-spacing: 2px; margin-bottom: 5px; }
         .v5-badge { display: inline-block; background: #006EFF; color: white; padding: 3px 10px; font-size: 11px; font-weight: 900; border-radius: 5px; margin-bottom: 20px; }
-        .device-box { background: rgba(0, 110, 255, 0.1); border: 1px dashed #006EFF; border-radius: 10px; padding: 12px; margin-bottom: 20px; color: #006EFF; font-family: monospace; font-size: 14px; font-weight: bold; }
+        .device-box { background: rgba(0, 110, 255, 0.1); border: 1px dashed #006EFF; border-radius: 10px; padding: 12px; margin-bottom: 20px; color: #006EFF; font-family: monospace; font-size: 14px; font-weight: bold; word-break: break-all; }
         .input-group { margin-bottom: 20px; text-align: left; }
         label { display: block; font-size: 11px; font-weight: 900; color: #adacb5; margin-bottom: 8px; letter-spacing: 1px; }
         input { width: 100%; padding: 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(0,110,255,0.3); border-radius: 10px; color: #fff; font-size: 14px; letter-spacing: 1px; }
@@ -26,19 +26,18 @@
     <h1>ZENOX - SECURE</h1>
     <span class="v5-badge">VERSION V5</span>
     
-    <div class="device-box">ZENOX-ADMIN-001</div>
+    <div class="device-box" id="devDisplay">GENERATING SECURE ID...</div>
     
     <% if (error) { %>
         <div class="error"><%= error %></div>
     <% } %>
     
-    <form action="/ZENOX-GATEWAY-LOGIN" method="POST">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <input type="hidden" name="deviceId" value="ZENOX-ADMIN-001">
+    <form action="/ZENOX-GATEWAY-LOGIN" method="POST" id="loginForm">
+        <input type="hidden" name="deviceId" id="devInput">
         
         <div class="input-group">
             <label>🔑 ENTER ACCESS LICENSE KEY</label>
-            <input type="password" name="password" placeholder="ENTER PASSWORD" required autocomplete="off">
+            <input type="password" name="password" placeholder="ENTER ACCESS KEY" required autocomplete="off">
         </div>
         
         <button type="submit" class="btn">ACTIVATE ACCESS PORTAL</button>
@@ -48,11 +47,27 @@
 
 <script>
     document.addEventListener('contextmenu', e => e.preventDefault());
-    document.onkeydown = function(e) {
-        if(e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
-            return false;
+    
+    function getPermanentDeviceID() {
+        let savedId = localStorage.getItem('zenox_permanent_id');
+        if (savedId) return savedId;
+
+        const navigator_info = window.navigator.userAgent + window.navigator.hardwareConcurrency + window.screen.colorDepth;
+        
+        let hash = 0;
+        for (let i = 0; i < navigator_info.length; i++) {
+            hash = (hash << 5) - hash + navigator_info.charCodeAt(i);
+            hash |= 0;
         }
-    };
+        
+        const cleanId = 'ZENOX-DEV-' + Math.abs(hash).toString(16).toUpperCase();
+        localStorage.setItem('zenox_permanent_id', cleanId);
+        return cleanId;
+    }
+
+    const myDeviceID = getPermanentDeviceID();
+    document.getElementById('devDisplay').textContent = myDeviceID;
+    document.getElementById('devInput').value = myDeviceID;
 </script>
 </body>
 </html>
