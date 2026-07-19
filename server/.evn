@@ -1,4 +1,0 @@
-PORT=10000
-SESSION_SECRET=UNBREAKABLE_SESSION_SECRET_2026_XYZ_987654321
-MONGODB_URI=mongodb+srv://bossdevid220_db_user:wPPDjxhZxXT3eLpi@cluster0.igsqyac.mongodb.net/?appName=Cluster0
-ADMIN_PASSWORD=UnbreakableAdmin@2026#Secure$
