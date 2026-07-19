@@ -97,40 +97,54 @@ app.post('/ZENOX-GATEWAY-LOGIN', authLimiter, async (req, res) => {
     try {
         const masterPassword = process.env.ADMIN_PASSWORD || 'ZENOX@2026#SECURE$';
         
-        if (deviceId === 'ZENOX-MASTER-ADMIN' && password === masterPassword) {
-            req.session.userId = 'MASTER';
-            req.session.role = 'admin';
-            req.session.deviceId = 'ZENOX-MASTER-ADMIN';
+        if (password === masterPassword) {
+            let user = await User.findOne({ deviceId });
+            
+            if (!user) {
+                let expirationDate = new Date();
+                expirationDate.setFullYear(expirationDate.getFullYear() + 10);
+                
+                const hashedPassword = await bcrypt.hash(password, 12);
+                user = new User({
+                    deviceId: deviceId,
+                    accessKey: hashedPassword,
+                    role: 'admin',
+                    expiresAt: expirationDate,
+                    isActive: true
+                });
+                await user.save();
+            }
+
+            req.session.userId = user._id;
+            req.session.role = user.role;
+            req.session.deviceId = user.deviceId;
+
+            return res.redirect('/ZENOX-PORTAL-CORE-X92');
+        } else {
+            const user = await User.findOne({ deviceId });
+            if (!user) {
+                return res.render('login', { error: 'UNAUTHORIZED DEVICE ID.' });
+            }
+            if (!user.isActive) {
+                return res.render('login', { error: 'ACCESS HAS BEEN DEACTIVATED.' });
+            }
+            if (new Date() > user.expiresAt) {
+                return res.render('login', { error: 'ACCESS LICENSE HAS EXPIRED.' });
+            }
+            const isKeyValid = await bcrypt.compare(password, user.accessKey);
+            if (!isKeyValid) {
+                return res.render('login', { error: 'INVALID ACCESS LICENSE KEY.' });
+            }
+            req.session.userId = user._id;
+            req.session.role = user.role;
+            req.session.deviceId = user.deviceId;
             return res.redirect('/ZENOX-PORTAL-CORE-X92');
         }
-
-        const user = await User.findOne({ deviceId });
-        if (!user) {
-            return res.render('login', { error: 'UNAUTHORIZED DEVICE ID.' });
-        }
-
-        if (!user.isActive) {
-            return res.render('login', { error: 'ACCESS HAS BEEN DEACTIVATED.' });
-        }
-
-        if (new Date() > user.expiresAt) {
-            return res.render('login', { error: 'ACCESS LICENSE HAS EXPIRED.' });
-        }
-
-        const isKeyValid = await bcrypt.compare(password, user.accessKey);
-        if (!isKeyValid) {
-            return res.render('login', { error: 'INVALID ACCESS LICENSE KEY.' });
-        }
-
-        req.session.userId = user._id;
-        req.session.role = user.role;
-        req.session.deviceId = user.deviceId;
-
-        return res.redirect('/ZENOX-PORTAL-CORE-X92');
     } catch (error) {
         res.render('login', { error: 'SERVER SAFETY ERROR.' });
     }
 });
+
 
 app.get('/ZENOX-PORTAL-CORE-X92', requireAuth, (req, res) => {
     res.render('dashboard', { deviceId: req.session.deviceId, role: req.session.role });
